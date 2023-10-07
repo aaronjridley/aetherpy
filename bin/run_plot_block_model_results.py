@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright 2020, the Aether Development Team (see doc/dev_team.md for members)
 # Full license can be found in License.md
 """Block-based model visualization routines."""
