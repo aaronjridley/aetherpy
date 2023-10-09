@@ -31,8 +31,21 @@ def get_args():
                         default = "Temperature", \
                         help = 'variable to plot')
 
-    parser.add_argument('-alt', metavar = 'alt', default =200, type = int, \
+    parser.add_argument('-cut',  \
+                        default = "alt", \
+                        help = 'plane to plot (alt, lat, lon)')
+
+    parser.add_argument('-alt', metavar = 'alt', default = 200, type = int, \
                         help = 'altitude :  alt in km (closest)')
+    parser.add_argument('-lat', metavar = 'lat', default = 0, type = int, \
+                        help = 'latitude :  lat in deg (closest)')
+    parser.add_argument('-lon', metavar = 'lon', default = 180, type = int, \
+                        help = 'longitude :  lon in deg (closest)')
+    
+    parser.add_argument('-scatter',  \
+                        action='store_true', default = False, \
+                        help = 'make scatter plot (instead of contour)')
+    
     
     parser.add_argument('filelist', nargs='+', \
                         help = 'list files to use for generating plots')
@@ -150,6 +163,101 @@ def read_nc_file(filename, file_vars=None):
 #
 # ----------------------------------------------------------------------
 
+def plot_alt_plane(valueData, lonData, latData, var, iAlt, \
+                   doScatter = False):
+
+    mini = np.min(valueData[var][:, 1:-1, 1:-1, iAlt])
+    maxi = np.max(np.abs(valueData[var][:, 1:-1, 1:-1, iAlt]))
+    if (mini < 0):
+        cmap = cm.bwr
+        mini = -maxi
+    else:
+        cmap = cm.plasma
+
+    for iBlock in range(nBlocks):
+        lon2d = lonData['lon'][iBlock, 1:-1, 1:-1, iAlt]
+        lat2d = latData['lat'][iBlock, 1:-1, 1:-1, iAlt]
+        v2d = valueData[var][iBlock, 1:-1, 1:-1, iAlt]
+        if (doScatter):
+            cax = ax.scatter(lon2d, lat2d, c = v2d, \
+                             vmin = mini, vmax = maxi, cmap = cmap)
+        else:
+            cax = ax.pcolormesh(lon2d, lat2d, v2d, \
+                                vmin = mini, vmax = maxi, cmap = cmap)
+            
+    ax.set_xlabel('Longitude (deg)')
+    ax.set_ylabel('Latitude (deg)')
+    ax.set_ylim([-90.0, 90.0])
+    ax.set_xlim([0.0, 360.0])
+
+    return cax
+
+
+# ----------------------------------------------------------------------
+#
+# ----------------------------------------------------------------------
+
+def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
+                   doScatter = False):
+
+    # need to cycle through all of the blocks to get the min and max:
+
+    nBlocksPlotted = 0
+    for iBlock in range(nBlocks):
+        lons = lonData['lon'][iBlock, 1:-1, 0, 0]
+        print(lons)
+        if ((lon >= np.min(lons)) & (lon < np.max(lons))):
+
+            d = np.abs(lons - lon)
+            iLon = np.argmin(d)
+
+            mini = np.min(valueData[var][:, iLon, 1:-1, 1:-1])
+            maxi = np.max(np.abs(valueData[var][:, iLon, 1:-1, 1:-1]))
+            nBlocksPlotted += 1
+
+    if (nBlocksPlotted == 0):
+        print('Cycled through all of the blocks and could not find ')
+        print('requested longitude of : ', lon)
+        exit()
+
+    if (mini < 0):
+        cmap = cm.bwr
+        mini = -maxi
+    else:
+        cmap = cm.plasma
+
+    nBlocksPlotted = 0
+    for iBlock in range(nBlocks):
+        lons = lonData['lon'][iBlock, 1:-1, 0, 0]
+        if ((lon >= np.min(lons)) & (lon < np.max(lons))):
+
+            d = np.abs(lons - lon)
+            iLon = np.argmin(d)
+
+            sPos = '%4.0f deg longitude ' % lons[iLon]
+            sPosFile = 'lon%03d' % iLon
+            alt2d = altData['z'][iBlock, iLon, 1:-1, 1:-1]
+            lat2d = latData['lat'][iBlock, iLon, 1:-1, 1:-1]
+            print(lat2d[10,:])
+            v2d = valueData[var][iBlock, iLon, 1:-1, 1:-1]
+            if (doScatter):
+                cax = ax.scatter(lat2d, alt2d, c = v2d, \
+                                 vmin = mini, vmax = maxi, cmap = cmap)
+            else:
+                cax = ax.pcolormesh(lat2d, alt2d, v2d, \
+                                    vmin = mini, vmax = maxi, cmap = cmap)
+            
+    ax.set_xlabel('Altitude (km)')
+    ax.set_xlabel('Latitude (deg)')
+    ax.set_xlim([-90.0, 90.0])
+    #ax.set_xlim([0.0, 360.0])
+
+    return cax, sPos, sPosFile
+
+# ----------------------------------------------------------------------
+#
+# ----------------------------------------------------------------------
+
 if __name__ == '__main__':
 
     # Get the input arguments
@@ -167,58 +275,43 @@ if __name__ == '__main__':
         exit()
 
     altData = read_nc_file(args.filelist[0], 'z')
-    alts = altData['z'][0,0,0,:]/1000.0
-    d = np.abs(alts - args.alt)
-    iAlt = np.argmin(d)
-
     lonData = read_nc_file(args.filelist[0], 'lon')
     latData = read_nc_file(args.filelist[0], 'lat')
     
-    print('Taking a slice at alt = ',alts[iAlt], ' km')
-
     nBlocks = altData['nblocks']
     nLons = altData['nlons']
     nLats = altData['nlats']
 
     var = args.var
+    doScatter = args.scatter
 
     for file in args.filelist:
     
         valueData = read_nc_file(file, var)
-
-        title = var + ' at %4.0f km at ' % alts[iAlt] + \
-            valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
     
         fig = plt.figure(figsize = (10,8))
         ax = fig.add_axes([0.075, 0.1, 0.95, 0.8])
 
-        mini = np.min(valueData[var][:, 1:-1, 1:-1, iAlt])
-        maxi = np.max(np.abs(valueData[var][:, 1:-1, 1:-1, iAlt]))
-        if (mini < 0):
-            cmap = cm.bwr
-            mini = -maxi
-        else:
-            cmap = cm.plasma
+        if (args.cut == 'alt'):
+            alts = altData['z'][0,0,0,:]/1000.0
+            d = np.abs(alts - args.alt)
+            iAlt = np.argmin(d)
+            print('Taking a slice at alt = ',alts[iAlt], ' km')
+            sPos = '%4.0f km ' % alts[iAlt]
+            sPosFile = 'alt%03d' % iAlt
+            cax = plot_alt_plane(valueData, lonData, latData, var, iAlt, doScatter)
+        if (args.cut == 'lon'):
+            cax, sPos, sPosFile = plot_lon_plane(valueData, lonData, latData, altData, var, args.lon, doScatter)
 
-        for iBlock in range(nBlocks):
-            lon2d = lonData['lon'][iBlock, 1:-1, 1:-1, iAlt]
-            lat2d = latData['lat'][iBlock, 1:-1, 1:-1, iAlt]
-            v2d = valueData[var][iBlock, 1:-1, 1:-1, iAlt]
-            cax = ax.pcolormesh(lon2d, lat2d, v2d, \
-                                vmin = mini, vmax = maxi, cmap = cmap)
-            
-        ax.set_xlabel('Longitude (deg)')
-        ax.set_ylabel('Latitude (deg)')
-        ax.set_ylim([-90.0, 90.0])
-        ax.set_xlim([0.0, 360.0])
+        title = var + ' at ' + sPos + ' at ' + \
+            valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
         ax.set_title(title)
         cbar = fig.colorbar(cax, ax=ax, shrink = 0.75, pad=0.02)
         cbar.set_label(var,rotation=90)
 
         var_name_stripped = var.replace(" ", "")
-        sAlt = 'alt%03d' % iAlt
         sTime = valueData['time'].strftime('%Y%m%d_%H%M%S')
-        outfile = var_name_stripped + '_' + sTime + '_' + sAlt + '.png'
+        outfile = var_name_stripped + '_' + sTime + '_' + sPosFile + '.png'
 
         print('Writing file : ' + outfile)
         plt.savefig(outfile)
