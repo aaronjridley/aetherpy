@@ -163,8 +163,15 @@ def read_nc_file(filename, file_vars=None):
 #
 # ----------------------------------------------------------------------
 
-def plot_alt_plane(valueData, lonData, latData, var, iAlt, \
+def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
                    doScatter = False):
+
+    alts = altData['z'][0,0,0,:]/1000.0
+    d = np.abs(alts - alt)
+    iAlt = np.argmin(d)
+    print('Taking a slice at alt = ',alts[iAlt], ' km')
+    sPos = '%4.0f km ' % alts[iAlt]
+    sPosFile = 'alt%03d' % iAlt
 
     mini = np.min(valueData[var][:, 1:-1, 1:-1, iAlt])
     maxi = np.max(np.abs(valueData[var][:, 1:-1, 1:-1, iAlt]))
@@ -190,7 +197,7 @@ def plot_alt_plane(valueData, lonData, latData, var, iAlt, \
     ax.set_ylim([-90.0, 90.0])
     ax.set_xlim([0.0, 360.0])
 
-    return cax
+    return cax, sPos, sPosFile
 
 
 # ----------------------------------------------------------------------
@@ -203,16 +210,17 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
     # need to cycle through all of the blocks to get the min and max:
 
     nBlocksPlotted = 0
+    mini = 1e32
+    maxi = -1e32
     for iBlock in range(nBlocks):
         lons = lonData['lon'][iBlock, 1:-1, 0, 0]
-        print(lons)
         if ((lon >= np.min(lons)) & (lon < np.max(lons))):
-
             d = np.abs(lons - lon)
             iLon = np.argmin(d)
-
-            mini = np.min(valueData[var][:, iLon, 1:-1, 1:-1])
-            maxi = np.max(np.abs(valueData[var][:, iLon, 1:-1, 1:-1]))
+            if (np.min(valueData[var][:, iLon, 1:-1, 1:-1]) < mini):
+                mini = np.min(valueData[var][:, iLon, 1:-1, 1:-1])
+            if (np.max(np.abs(valueData[var][:, iLon, 1:-1, 1:-1])) > maxi):
+                maxi = np.max(np.abs(valueData[var][:, iLon, 1:-1, 1:-1]))
             nBlocksPlotted += 1
 
     if (nBlocksPlotted == 0):
@@ -230,15 +238,12 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
     for iBlock in range(nBlocks):
         lons = lonData['lon'][iBlock, 1:-1, 0, 0]
         if ((lon >= np.min(lons)) & (lon < np.max(lons))):
-
             d = np.abs(lons - lon)
             iLon = np.argmin(d)
-
             sPos = '%4.0f deg longitude ' % lons[iLon]
             sPosFile = 'lon%03d' % iLon
             alt2d = altData['z'][iBlock, iLon, 1:-1, 1:-1]
             lat2d = latData['lat'][iBlock, iLon, 1:-1, 1:-1]
-            print(lat2d[10,:])
             v2d = valueData[var][iBlock, iLon, 1:-1, 1:-1]
             if (doScatter):
                 cax = ax.scatter(lat2d, alt2d, c = v2d, \
@@ -293,13 +298,7 @@ if __name__ == '__main__':
         ax = fig.add_axes([0.075, 0.1, 0.95, 0.8])
 
         if (args.cut == 'alt'):
-            alts = altData['z'][0,0,0,:]/1000.0
-            d = np.abs(alts - args.alt)
-            iAlt = np.argmin(d)
-            print('Taking a slice at alt = ',alts[iAlt], ' km')
-            sPos = '%4.0f km ' % alts[iAlt]
-            sPosFile = 'alt%03d' % iAlt
-            cax = plot_alt_plane(valueData, lonData, latData, var, iAlt, doScatter)
+            cax, sPos, sPosFile = plot_alt_plane(valueData, lonData, latData, altData, var, args.alt , doScatter)
         if (args.cut == 'lon'):
             cax, sPos, sPosFile = plot_lon_plane(valueData, lonData, latData, altData, var, args.lon, doScatter)
 
