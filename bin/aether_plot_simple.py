@@ -42,10 +42,13 @@ def get_args():
     parser.add_argument('-lon', metavar = 'lon', default = 180, type = int, \
                         help = 'longitude :  lon in deg (closest)')
     
+    parser.add_argument('-polar',  \
+                        action='store_true', default = False, \
+                        help = 'plot polar plots also (3 plots!)')
+    
     parser.add_argument('-scatter',  \
                         action='store_true', default = False, \
                         help = 'make scatter plot (instead of contour)')
-    
     
     parser.add_argument('filelist', nargs='+', \
                         help = 'list files to use for generating plots')
@@ -160,12 +163,68 @@ def read_nc_file(filename, file_vars=None):
     return data
 
 # ----------------------------------------------------------------------
+# This is a function that will examine the last block to determine
+# whether the grid is a cubesphere or not.  The last block should
+# be the north polar region.  If it is a spherical grid, the spacing
+# should be uniform in longitude.  If it is a cubesphere grid, it
+# won't be uniform
+# ----------------------------------------------------------------------
+
+def determine_cubesphere(lonData):
+    nLatsD2 = int(len(lonData['lon'][-1, 0, :, 0])/2)
+    # Only take true cells, so we can not have to worry about wrapping:
+    lon1d = lonData['lon'][-1, 2:-2, nLatsD2, 0]
+    dLon = lon1d[1:-1] - lon1d[0:-2]
+    mindLon = np.min(dLon)
+    maxdLon = np.max(dLon)
+    if ((maxdLon - mindLon) > 0.01):
+        return True
+    else:
+        return False
+
+# ----------------------------------------------------------------------
+# This adds labels to the polar plots, including latitudes, local times,
+# and a label in the upper left
+# ----------------------------------------------------------------------
+
+def set_labels_polar(axis, label, isSouth = False, \
+                     no00 = False, no06 = False, no12 = False, no18 = False):
+
+    xlabels = ['06', '12', '18', '00']
+    if (no00):
+        xlabels[3] = ''
+    if (no06):
+        xlabels[0] = ''
+    if (no12):
+        xlabels[1] = ''
+    if (no18):
+        xlabels[2] = ''
+    if (isSouth):
+        ylabels = ['-80', '-70', '-60', '-50']
+    else:
+        ylabels = ['80', '70', '60', '50']
+    axis.set_xticks(np.arange(0,2*np.pi,np.pi/2))
+    axis.set_yticks(np.arange(10,45,10))
+    axis.set_xticklabels(xlabels)
+    axis.set_yticklabels(ylabels)
+    axis.set_ylim(0,45)
+
+    ang = np.pi*3.0/4.0
+    axis.text(ang, np.abs(40/np.cos(ang)), label)
+    
+    return
+    
+# ----------------------------------------------------------------------
 #
 # ----------------------------------------------------------------------
 
 def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
-                   doScatter = False):
+                   ax, 
+                   isCubeSphere, \
+                   doScatter = False, doPolar = False):
 
+    reallyScatter = doScatter
+    
     alts = altData['z'][0,0,0,:]/1000.0
     d = np.abs(alts - alt)
     iAlt = np.argmin(d)
@@ -183,19 +242,41 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
 
     for iBlock in range(nBlocks):
         lon2d = lonData['lon'][iBlock, 1:-1, 1:-1, iAlt]
+        if ((np.min(lon2d) < 45.0) & (np.max(lon2d) > 315.0)):
+            if (np.median(lon2d) < 90.0):
+                lon2d[lon2d > 315] = lon2d[lon2d > 315] - 360.0
+            if (np.median(lon2d) > 270.0):
+                lon2d[lon2d < 45] = lon2d[lon2d < 45] + 360.0
         lat2d = latData['lat'][iBlock, 1:-1, 1:-1, iAlt]
         v2d = valueData[var][iBlock, 1:-1, 1:-1, iAlt]
-        if (doScatter):
-            cax = ax.scatter(lon2d, lat2d, c = v2d, \
+        if ((iBlock >= 4) & (isCubeSphere)):
+            reallyScatter = True
+        if (reallyScatter):
+            cax = ax[0].scatter(lon2d, lat2d, c = v2d, \
                              vmin = mini, vmax = maxi, cmap = cmap)
         else:
-            cax = ax.pcolormesh(lon2d, lat2d, v2d, \
+            cax = ax[0].pcolormesh(lon2d, lat2d, v2d, \
                                 vmin = mini, vmax = maxi, cmap = cmap)
+        if (doPolar):
+            if (np.mean(lat2d) > 45.0):
+                t2d = lon2d * np.pi / 180.0 - np.pi/2.0
+                r2d = 90.0 - lat2d
+                ax[1].pcolor(t2d, r2d, v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                #ax[1].scatter(t2d, r2d, c = v2d, cmap = cmap, vmin = mini, vmax = maxi)
+        
+            if (np.mean(lat2d) < -45.0):
+                t2d = lon2d * np.pi / 180.0 - np.pi/2.0
+                r2d = 90.0 + lat2d
+                ax[2].pcolor(t2d, r2d, v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                #ax[2].scatter(t2d, r2d, c = v2d, cmap = cmap, vmin = mini, vmax = maxi)
             
-    ax.set_xlabel('Longitude (deg)')
-    ax.set_ylabel('Latitude (deg)')
-    ax.set_ylim([-90.0, 90.0])
-    ax.set_xlim([0.0, 360.0])
+    ax[0].set_xlabel('Longitude (deg)')
+    ax[0].set_ylabel('Latitude (deg)')
+    ax[0].set_ylim([-90.0, 90.0])
+    ax[0].set_xlim([0.0, 360.0])
+    if (doPolar):
+        set_labels_polar(ax[1], 'North')
+        set_labels_polar(ax[2], 'South', isSouth = True)
 
     return cax, sPos, sPosFile
 
@@ -205,6 +286,7 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
 # ----------------------------------------------------------------------
 
 def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
+                   ax, \
                    doScatter = False):
 
     # need to cycle through all of the blocks to get the min and max:
@@ -246,15 +328,15 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
             lat2d = latData['lat'][iBlock, iLon, 1:-1, 1:-1]
             v2d = valueData[var][iBlock, iLon, 1:-1, 1:-1]
             if (doScatter):
-                cax = ax.scatter(lat2d, alt2d, c = v2d, \
+                cax = ax[0].scatter(lat2d, alt2d, c = v2d, \
                                  vmin = mini, vmax = maxi, cmap = cmap)
             else:
-                cax = ax.pcolormesh(lat2d, alt2d, v2d, \
+                cax = ax[0].pcolormesh(lat2d, alt2d, v2d, \
                                     vmin = mini, vmax = maxi, cmap = cmap)
             
-    ax.set_xlabel('Altitude (km)')
-    ax.set_xlabel('Latitude (deg)')
-    ax.set_xlim([-90.0, 90.0])
+    ax[0].set_xlabel('Altitude (km)')
+    ax[0].set_xlabel('Latitude (deg)')
+    ax[0].set_xlim([-90.0, 90.0])
     #ax.set_xlim([0.0, 360.0])
 
     return cax, sPos, sPosFile
@@ -282,6 +364,9 @@ if __name__ == '__main__':
     altData = read_nc_file(args.filelist[0], 'z')
     lonData = read_nc_file(args.filelist[0], 'lon')
     latData = read_nc_file(args.filelist[0], 'lat')
+
+    isCube = determine_cubesphere(lonData)
+    print("  -> is a cubesphere grid? ", isCube)
     
     nBlocks = altData['nblocks']
     nLons = altData['nlons']
@@ -295,16 +380,28 @@ if __name__ == '__main__':
         valueData = read_nc_file(file, var)
     
         fig = plt.figure(figsize = (10,8))
-        ax = fig.add_axes([0.075, 0.1, 0.95, 0.8])
+        ax = []
+        if (args.polar):
+            # bottom full globe
+            ax.append(fig.add_axes([0.075, 0.06, 0.95, 0.5]))
+            size = 0.37
+            # upper left
+            ax.append(fig.add_axes([0.06, 0.59, size, size], projection='polar'))
+            # upper right
+            ax.append(fig.add_axes([0.6, 0.59, size, size], projection='polar'))
+        else:
+            ax.append(fig.add_axes([0.075, 0.1, 0.95, 0.8]))
 
         if (args.cut == 'alt'):
-            cax, sPos, sPosFile = plot_alt_plane(valueData, lonData, latData, altData, var, args.alt , doScatter)
+            cax, sPos, sPosFile = plot_alt_plane(valueData, lonData, latData, altData, \
+                                                 var, args.alt, ax, \
+                                                 isCube, doScatter, args.polar)
         if (args.cut == 'lon'):
-            cax, sPos, sPosFile = plot_lon_plane(valueData, lonData, latData, altData, var, args.lon, doScatter)
+            cax, sPos, sPosFile = plot_lon_plane(valueData, lonData, latData, altData, var, args.lon, ax, doScatter)
 
-        title = var + ' at ' + sPos + ' at ' + \
+        title = var + ' at ' + sPos + ' at\n' + \
             valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
-        ax.set_title(title)
+        ax[0].set_title(title)
         cbar = fig.colorbar(cax, ax=ax, shrink = 0.75, pad=0.02)
         cbar.set_label(var,rotation=90)
 
