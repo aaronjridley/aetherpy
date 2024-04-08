@@ -13,6 +13,7 @@ from netCDF4 import Dataset
 import os
 import datetime as dt
 from pylab import cm
+import glob
 
 # ----------------------------------------------------------------------
 #
@@ -218,6 +219,19 @@ def set_labels_polar(axis, label, isSouth = False, \
 #
 # ----------------------------------------------------------------------
 
+def get_corrected_lon(lonData, lonv, iBlock, iAlt):
+    lon2d = lonData[lonv][iBlock, 1:-1, 1:-1, iAlt]
+    if ((np.min(lon2d) < 45.0) & (np.max(lon2d) > 315.0)):
+        if (np.median(lon2d) < 90.0):
+            lon2d[lon2d > 315] = lon2d[lon2d > 315] - 360.0
+        if (np.median(lon2d) > 270.0):
+            lon2d[lon2d < 45] = lon2d[lon2d < 45] + 360.0
+    return lon2d
+    
+# ----------------------------------------------------------------------
+#
+# ----------------------------------------------------------------------
+
 def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
                    ax, 
                    isCubeSphere, \
@@ -240,39 +254,77 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
     else:
         cmap = cm.plasma
 
+    # First go through the non-polar plot and plot all blocks:
     for iBlock in range(nBlocks):
-        lon2d = lonData['lon'][iBlock, 1:-1, 1:-1, iAlt]
-        if ((np.min(lon2d) < 45.0) & (np.max(lon2d) > 315.0)):
-            if (np.median(lon2d) < 90.0):
-                lon2d[lon2d > 315] = lon2d[lon2d > 315] - 360.0
-            if (np.median(lon2d) > 270.0):
-                lon2d[lon2d < 45] = lon2d[lon2d < 45] + 360.0
-        lat2d = latData['lat'][iBlock, 1:-1, 1:-1, iAlt]
+
+        # if this is a cubesphere, we don't want to plot the polar cells
+        # in the main region as pcolors, since they get messed up
+        # but, we we didn't ask for scatter, and we have corners, we
+        # want to use the corners
+
+        # first, if we specified scatter, don't use corners:
+        if ((doScatter) or (not ('lonc' in lonData))):
+            useCorners = False
+        else:
+            useCorners = True
+            # now, only turn off corners if cubesphere and in polar region:
+            # First check for CubeSphere:
+            if (isCubeSphere):
+                latv = 'lat'
+                lat2d = latData[latv][iBlock, 1:-1, 1:-1, iAlt]
+                # check for polar region:
+                if (np.abs(np.mean(lat2d)) > 45.0):
+                    reallyScatter = True
+                    useCorners = False
+                
+        if (useCorners):
+            lonv = 'lonc'
+            latv = 'latc'
+        else:
+            lonv = 'lon'
+            latv = 'lat'
+            
+        lat2d = latData[latv][iBlock, 1:-1, 1:-1, iAlt]
+        lon2d = get_corrected_lon(lonData, lonv, iBlock, iAlt)
         v2d = valueData[var][iBlock, 1:-1, 1:-1, iAlt]
-        if ((iBlock >= 4) & (isCubeSphere)):
-            reallyScatter = True
+
         if (reallyScatter):
             cax = ax[0].scatter(lon2d, lat2d, c = v2d, \
                              vmin = mini, vmax = maxi, cmap = cmap)
         else:
             cax = ax[0].pcolormesh(lon2d, lat2d, v2d, \
                                 vmin = mini, vmax = maxi, cmap = cmap)
-        if (doPolar):
-            if (np.mean(lat2d) > 45.0):
+            
+    if (doPolar):
+        for iBlock in range(nBlocks):
+            lonv = 'lon'
+            latv = 'lat'
+            if ((not doScatter) and ('lonc' in lonData)):
+                lonv = 'lonc'
+                latv = 'latc'
+            lat2d = latData[latv][iBlock, 1:-1, 1:-1, iAlt]
+            lon2d = get_corrected_lon(lonData, lonv, iBlock, iAlt)
+            v2d = valueData[var][iBlock, 1:-1, 1:-1, iAlt]
+        
+            if (np.max(lat2d) > 50.0):
                 t2d = lon2d * np.pi / 180.0 - np.pi/2.0
                 r2d = 90.0 - lat2d
                 if (doScatter):
-                    ax[1].scatter(t2d, r2d, c = v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                    ax[1].scatter(t2d, r2d, c = v2d, \
+                                  cmap = cmap, vmin = mini, vmax = maxi)
                 else:
-                    ax[1].pcolor(t2d, r2d, v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                    ax[1].pcolor(t2d, r2d, v2d, \
+                                 cmap = cmap, vmin = mini, vmax = maxi)
         
-            if (np.mean(lat2d) < -45.0):
+            if (np.min(lat2d) < -45.0):
                 t2d = lon2d * np.pi / 180.0 - np.pi/2.0
                 r2d = 90.0 + lat2d
                 if (doScatter):
-                    ax[2].scatter(t2d, r2d, c = v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                    ax[2].scatter(t2d, r2d, c = v2d, \
+                                  cmap = cmap, vmin = mini, vmax = maxi)
                 else:
-                    ax[2].pcolor(t2d, r2d, v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                    ax[2].pcolor(t2d, r2d, v2d, \
+                                 cmap = cmap, vmin = mini, vmax = maxi)
             
     ax[0].set_xlabel('Longitude (deg)')
     ax[0].set_ylabel('Latitude (deg)')
@@ -365,10 +417,26 @@ if __name__ == '__main__':
                     print(i, var)
         exit()
 
+    # If there is a corner file and the user does not want scatter plots,
+    # we should be able to use the corners, if that file exists:
+
+    useCorners = False
+    if (not args.scatter):
+        cornerFile = glob.glob("3DCOR*")
+        if (len(cornerFile) > 0):
+            altDataC = read_nc_file(cornerFile[0], 'z')
+            lonDataC = read_nc_file(cornerFile[0], 'lon')
+            latDataC = read_nc_file(cornerFile[0], 'lat')
+            useCorners = True
     altData = read_nc_file(args.filelist[0], 'z')
     lonData = read_nc_file(args.filelist[0], 'lon')
     latData = read_nc_file(args.filelist[0], 'lat')
 
+    if (useCorners):
+        altData['zc'] = altDataC['z']
+        latData['latc'] = latDataC['lat']
+        lonData['lonc'] = lonDataC['lon']
+    
     isCube = determine_cubesphere(lonData)
     print("  -> is a cubesphere grid? ", isCube)
     
@@ -390,18 +458,23 @@ if __name__ == '__main__':
             ax.append(fig.add_axes([0.075, 0.06, 0.95, 0.5]))
             size = 0.37
             # upper left
-            ax.append(fig.add_axes([0.06, 0.59, size, size], projection='polar'))
+            ax.append(fig.add_axes([0.06, 0.59, size, size], \
+                                   projection='polar'))
             # upper right
-            ax.append(fig.add_axes([0.6, 0.59, size, size], projection='polar'))
+            ax.append(fig.add_axes([0.6, 0.59, size, size], \
+                                   projection='polar'))
         else:
             ax.append(fig.add_axes([0.075, 0.1, 0.95, 0.8]))
 
         if (args.cut == 'alt'):
-            cax, sPos, sPosFile = plot_alt_plane(valueData, lonData, latData, altData, \
+            cax, sPos, sPosFile = plot_alt_plane(valueData, \
+                                                 lonData, latData, altData, \
                                                  var, args.alt, ax, \
                                                  isCube, doScatter, args.polar)
         if (args.cut == 'lon'):
-            cax, sPos, sPosFile = plot_lon_plane(valueData, lonData, latData, altData, var, args.lon, ax, doScatter)
+            cax, sPos, sPosFile = plot_lon_plane(valueData, \
+                                                 lonData, latData, altData, \
+                                                 var, args.lon, ax, doScatter)
 
         title = var + ' at ' + sPos + ' at\n' + \
             valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
