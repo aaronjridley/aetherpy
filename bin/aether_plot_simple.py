@@ -261,14 +261,18 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
             if (np.mean(lat2d) > 45.0):
                 t2d = lon2d * np.pi / 180.0 - np.pi/2.0
                 r2d = 90.0 - lat2d
-                ax[1].pcolor(t2d, r2d, v2d, cmap = cmap, vmin = mini, vmax = maxi)
-                #ax[1].scatter(t2d, r2d, c = v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                if (doScatter):
+                    ax[1].scatter(t2d, r2d, c = v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                else:
+                    ax[1].pcolor(t2d, r2d, v2d, cmap = cmap, vmin = mini, vmax = maxi)
         
             if (np.mean(lat2d) < -45.0):
                 t2d = lon2d * np.pi / 180.0 - np.pi/2.0
                 r2d = 90.0 + lat2d
-                ax[2].pcolor(t2d, r2d, v2d, cmap = cmap, vmin = mini, vmax = maxi)
-                #ax[2].scatter(t2d, r2d, c = v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                if (doScatter):
+                    ax[2].scatter(t2d, r2d, c = v2d, cmap = cmap, vmin = mini, vmax = maxi)
+                else:
+                    ax[2].pcolor(t2d, r2d, v2d, cmap = cmap, vmin = mini, vmax = maxi)
             
     ax[0].set_xlabel('Longitude (deg)')
     ax[0].set_ylabel('Latitude (deg)')
