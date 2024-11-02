@@ -29,7 +29,7 @@ def get_args():
                         help = 'list variables in file')
 
     parser.add_argument('-var',  \
-                        default = "Temperature", \
+                        default = "Temperature_neutral", \
                         help = 'variable to plot')
 
     parser.add_argument('-cut',  \
@@ -50,6 +50,10 @@ def get_args():
     parser.add_argument('-scatter',  \
                         action='store_true', default = False, \
                         help = 'make scatter plot (instead of contour)')
+    
+    parser.add_argument('-log',  \
+                        action='store_true', default = False, \
+                        help = 'Take the log of the variable')
     
     parser.add_argument('filelist', nargs='+', \
                         help = 'list files to use for generating plots')
@@ -175,10 +179,25 @@ def determine_cubesphere(lonData):
     nLatsD2 = int(len(lonData['lon'][-1, 0, :, 0])/2)
     # Only take true cells, so we can not have to worry about wrapping:
     lon1d = lonData['lon'][-1, 2:-2, nLatsD2, 0]
+    if (len(lon1d) == 1):
+        return False
     dLon = lon1d[1:-1] - lon1d[0:-2]
     mindLon = np.min(dLon)
     maxdLon = np.max(dLon)
     if ((maxdLon - mindLon) > 0.01):
+        return True
+    else:
+        return False
+
+# ----------------------------------------------------------------------
+# Determine if the grid is 1D (assume vertical 1D...)
+# ----------------------------------------------------------------------
+
+def determine_isoned(lonData):
+    nLons = len(lonData['lon'][0, :, 0, 0])
+    nLats = len(lonData['lon'][0, 0, :, 0])
+    nGCs = 2
+    if ((nLons == 2*nGCs + 1) & (nLats == 2*nGCs + 1)):
         return True
     else:
         return False
@@ -289,6 +308,7 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
         v2d = valueData[var][iBlock, 1:-1, 1:-1, iAlt]
 
         if (reallyScatter):
+            lon2d = (lon2d + 360) % 360
             cax = ax[0].scatter(lon2d, lat2d, c = v2d, \
                              vmin = mini, vmax = maxi, cmap = cmap)
         else:
@@ -343,15 +363,19 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
 
 def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
                    ax, \
-                   doScatter = False):
+                   doScatter = False,
+                   doPlotLog = False):
 
     # need to cycle through all of the blocks to get the min and max:
 
     nBlocksPlotted = 0
     mini = 1e32
     maxi = -1e32
+    nAlts = len(lonData['lon'][0, 0, 0, :])
+    nLats = len(lonData['lon'][0, 0, :, 0])
+    
     for iBlock in range(nBlocks):
-        lons = lonData['lon'][iBlock, 1:-1, 0, 0]
+        lons = lonData['lon'][iBlock, 1:-1, int(nLats/2), int(nAlts/2)]
         if ((lon >= np.min(lons)) & (lon < np.max(lons))):
             d = np.abs(lons - lon)
             iLon = np.argmin(d)
@@ -360,7 +384,6 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
             if (np.max(np.abs(valueData[var][:, iLon, 1:-1, 1:-1])) > maxi):
                 maxi = np.max(np.abs(valueData[var][:, iLon, 1:-1, 1:-1]))
             nBlocksPlotted += 1
-
     if (nBlocksPlotted == 0):
         print('Cycled through all of the blocks and could not find ')
         print('requested longitude of : ', lon)
@@ -372,17 +395,28 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
     else:
         cmap = cm.plasma
 
+    if (doPlotLog):
+        maxi = np.log10(maxi)
+        mini = np.log10(mini)
+
     nBlocksPlotted = 0
     for iBlock in range(nBlocks):
-        lons = lonData['lon'][iBlock, 1:-1, 0, 0]
-        if ((lon >= np.min(lons)) & (lon < np.max(lons))):
+        lons = lonData['lon'][iBlock, 1:-1, int(nLats/2), int(nAlts/2)]
+        print(lons)
+        d = np.abs(lons - lon)
+        #if ((lon >= np.min(lons)) & (lon < np.max(lons))):
+        if (np.min(d) < 20.0):
             d = np.abs(lons - lon)
             iLon = np.argmin(d)
+            print('iLon : ', iLon)
             sPos = '%4.0f deg longitude ' % lons[iLon]
             sPosFile = 'lon%03d' % iLon
-            alt2d = altData['z'][iBlock, iLon, 1:-1, 1:-1]
+            alt2d = altData['z'][iBlock, iLon, 1:-1, 1:-1]/1000.0
             lat2d = latData['lat'][iBlock, iLon, 1:-1, 1:-1]
+            print(lat2d[:,2])
             v2d = valueData[var][iBlock, iLon, 1:-1, 1:-1]
+            if (doPlotLog):
+                v2d = np.log10(v2d)
             if (doScatter):
                 cax = ax[0].scatter(lat2d, alt2d, c = v2d, \
                                  vmin = mini, vmax = maxi, cmap = cmap)
@@ -439,6 +473,8 @@ if __name__ == '__main__':
     
     isCube = determine_cubesphere(lonData)
     print("  -> is a cubesphere grid? ", isCube)
+    is1D = determine_isoned(lonData)
+    print("  -> is a 1d grid? ", is1D)
     
     nBlocks = altData['nblocks']
     nLons = altData['nlons']
@@ -446,46 +482,70 @@ if __name__ == '__main__':
 
     var = args.var
     doScatter = args.scatter
+    varAltered = var
+    if (args.log):
+        varAltered = 'log(' + varAltered + ')'
 
     for file in args.filelist:
     
         valueData = read_nc_file(file, var)
-    
-        fig = plt.figure(figsize = (10,8))
-        ax = []
-        if (args.polar):
-            # bottom full globe
-            ax.append(fig.add_axes([0.075, 0.06, 0.95, 0.5]))
-            size = 0.37
-            # upper left
-            ax.append(fig.add_axes([0.06, 0.59, size, size], \
-                                   projection='polar'))
-            # upper right
-            ax.append(fig.add_axes([0.6, 0.59, size, size], \
-                                   projection='polar'))
+        doOutput = False
+
+        if (is1D):
+            if (file == args.filelist[0]):
+                fig = plt.figure(figsize = (10,8))
+                ax = fig.add_axes([0.075, 0.1, 0.90, 0.8])
+                
+            alts = altData['z'][0, 2, 2, :]/1000.0
+            data = valueData[var][0, 2, 2, :]
+            ax.plot(data, alts)
+            ax.set_xlabel(var)
+            ax.set_ylabel('Alts (km)')
+            sPosFile = 'oned'
+
+            if (file == args.filelist[-1]):
+                doOutput = True
+            
         else:
-            ax.append(fig.add_axes([0.075, 0.1, 0.95, 0.8]))
+        
+            fig = plt.figure(figsize = (10,8))
+            ax = []
+            doOutput = True
+            if (args.polar):
+                # bottom full globe
+                ax.append(fig.add_axes([0.075, 0.06, 0.95, 0.5]))
+                size = 0.37
+                # upper left
+                ax.append(fig.add_axes([0.06, 0.59, size, size], \
+                                       projection='polar'))
+                # upper right
+                ax.append(fig.add_axes([0.6, 0.59, size, size], \
+                                       projection='polar'))
+            else:
+                ax.append(fig.add_axes([0.075, 0.1, 0.95, 0.8]))
+            
+            if (args.cut == 'alt'):
+                cax, sPos, sPosFile = plot_alt_plane(valueData, \
+                                                     lonData, latData, altData, \
+                                                     var, args.alt, ax, \
+                                                     isCube, doScatter, args.polar)
+                if (args.cut == 'lon'):
+                    cax, sPos, sPosFile = plot_lon_plane(valueData, \
+                                                         lonData, latData, altData, \
+                                                         var, args.lon, ax, doScatter, \
+                                                         args.log)
 
-        if (args.cut == 'alt'):
-            cax, sPos, sPosFile = plot_alt_plane(valueData, \
-                                                 lonData, latData, altData, \
-                                                 var, args.alt, ax, \
-                                                 isCube, doScatter, args.polar)
-        if (args.cut == 'lon'):
-            cax, sPos, sPosFile = plot_lon_plane(valueData, \
-                                                 lonData, latData, altData, \
-                                                 var, args.lon, ax, doScatter)
+                title = varAltered + ' at ' + sPos + ' at\n' + \
+                    valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
+                ax[0].set_title(title)
+                cbar = fig.colorbar(cax, ax = ax, shrink = 0.75, pad = 0.02)
+                cbar.set_label(varAltered, rotation=90)
 
-        title = var + ' at ' + sPos + ' at\n' + \
-            valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
-        ax[0].set_title(title)
-        cbar = fig.colorbar(cax, ax=ax, shrink = 0.75, pad=0.02)
-        cbar.set_label(var,rotation=90)
+        if (doOutput):
+            var_name_stripped = var.replace(" ", "")
+            sTime = valueData['time'].strftime('%Y%m%d_%H%M%S')
+            outfile = var_name_stripped + '_' + sTime + '_' + sPosFile + '.png'
 
-        var_name_stripped = var.replace(" ", "")
-        sTime = valueData['time'].strftime('%Y%m%d_%H%M%S')
-        outfile = var_name_stripped + '_' + sTime + '_' + sPosFile + '.png'
-
-        print('Writing file : ' + outfile)
-        plt.savefig(outfile)
-        plt.close()
+            print('Writing file : ' + outfile)
+            plt.savefig(outfile)
+            plt.close()
