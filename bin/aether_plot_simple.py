@@ -146,6 +146,7 @@ def read_nc_file(filename, file_vars=None):
             'units': '',
             'long_name': None}
 
+    print('Reading file : ', filename)
     with Dataset(filename, 'r') as ncfile:
         # Process header information: nlons, nlats, nalts, nblocks
         data['nlons'] = len(ncfile.dimensions['lon'])
