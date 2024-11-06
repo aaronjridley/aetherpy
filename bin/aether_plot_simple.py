@@ -408,12 +408,10 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
         if (np.min(d) < 20.0):
             d = np.abs(lons - lon)
             iLon = np.argmin(d)
-            print('iLon : ', iLon)
             sPos = '%4.0f deg longitude ' % lons[iLon]
             sPosFile = 'lon%03d' % iLon
             alt2d = altData['z'][iBlock, iLon, 1:-1, 1:-1]/1000.0
             lat2d = latData['lat'][iBlock, iLon, 1:-1, 1:-1]
-            print(lat2d[:,2])
             v2d = valueData[var][iBlock, iLon, 1:-1, 1:-1]
             if (doPlotLog):
                 v2d = np.log10(v2d)
@@ -523,17 +521,16 @@ if __name__ == '__main__':
                                        projection='polar'))
             else:
                 ax.append(fig.add_axes([0.075, 0.1, 0.95, 0.8]))
-            
             if (args.cut == 'alt'):
                 cax, sPos, sPosFile = plot_alt_plane(valueData, \
                                                      lonData, latData, altData, \
                                                      var, args.alt, ax, \
                                                      isCube, doScatter, args.polar)
-                if (args.cut == 'lon'):
-                    cax, sPos, sPosFile = plot_lon_plane(valueData, \
-                                                         lonData, latData, altData, \
-                                                         var, args.lon, ax, doScatter, \
-                                                         args.log)
+            if (args.cut == 'lon'):
+                cax, sPos, sPosFile = plot_lon_plane(valueData, \
+                                                     lonData, latData, altData, \
+                                                     var, args.lon, ax, doScatter, \
+                                                     args.log)
 
                 title = varAltered + ' at ' + sPos + ' at\n' + \
                     valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
