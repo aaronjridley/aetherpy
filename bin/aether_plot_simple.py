@@ -272,7 +272,7 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
         cmap = cm.bwr
         mini = -maxi
     else:
-        cmap = cm.plasma
+        cmap = cm.Reds
 
     # First go through the non-polar plot and plot all blocks:
     for iBlock in range(nBlocks):
@@ -314,7 +314,8 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
                              vmin = mini, vmax = maxi, cmap = cmap)
         else:
             cax = ax[0].pcolormesh(lon2d, lat2d, v2d, \
-                                vmin = mini, vmax = maxi, cmap = cmap)
+                                   vmin = mini, vmax = maxi, cmap = cmap, \
+                                   shading = 'auto')
             
     if (doPolar):
         for iBlock in range(nBlocks):
@@ -335,7 +336,8 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
                                   cmap = cmap, vmin = mini, vmax = maxi)
                 else:
                     ax[1].pcolor(t2d, r2d, v2d, \
-                                 cmap = cmap, vmin = mini, vmax = maxi)
+                                 cmap = cmap, vmin = mini, vmax = maxi, \
+                                   shading = 'auto')
         
             if (np.min(lat2d) < -45.0):
                 t2d = lon2d * np.pi / 180.0 - np.pi/2.0
@@ -345,7 +347,8 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
                                   cmap = cmap, vmin = mini, vmax = maxi)
                 else:
                     ax[2].pcolor(t2d, r2d, v2d, \
-                                 cmap = cmap, vmin = mini, vmax = maxi)
+                                 cmap = cmap, vmin = mini, vmax = maxi, \
+                                   shading = 'auto')
             
     ax[0].set_xlabel('Longitude (deg)')
     ax[0].set_ylabel('Latitude (deg)')
@@ -403,7 +406,6 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
     nBlocksPlotted = 0
     for iBlock in range(nBlocks):
         lons = lonData['lon'][iBlock, 1:-1, int(nLats/2), int(nAlts/2)]
-        print(lons)
         d = np.abs(lons - lon)
         #if ((lon >= np.min(lons)) & (lon < np.max(lons))):
         if (np.min(d) < 20.0):
@@ -420,7 +422,7 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
                 cax = ax[0].scatter(lat2d, alt2d, c = v2d, \
                                  vmin = mini, vmax = maxi, cmap = cmap)
             else:
-                cax = ax[0].pcolormesh(lat2d, alt2d, v2d, \
+                cax = ax[0].pcolormesh(lat2d, alt2d, v2d, shading = 'auto', \
                                     vmin = mini, vmax = maxi, cmap = cmap)
             
     ax[0].set_xlabel('Altitude (km)')
@@ -512,13 +514,13 @@ if __name__ == '__main__':
             doOutput = True
             if (args.polar):
                 # bottom full globe
-                ax.append(fig.add_axes([0.075, 0.06, 0.95, 0.5]))
+                ax.append(fig.add_axes([0.075, 0.06, 0.9, 0.5]))
                 size = 0.37
                 # upper left
                 ax.append(fig.add_axes([0.06, 0.59, size, size], \
                                        projection='polar'))
                 # upper right
-                ax.append(fig.add_axes([0.6, 0.59, size, size], \
+                ax.append(fig.add_axes([0.5, 0.59, size, size], \
                                        projection='polar'))
             else:
                 ax.append(fig.add_axes([0.075, 0.1, 0.95, 0.8]))
@@ -533,11 +535,11 @@ if __name__ == '__main__':
                                                      var, args.lon, ax, doScatter, \
                                                      args.log)
 
-                title = varAltered + ' at ' + sPos + ' at\n' + \
-                    valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
-                ax[0].set_title(title)
-                cbar = fig.colorbar(cax, ax = ax, shrink = 0.75, pad = 0.02)
-                cbar.set_label(varAltered, rotation=90)
+            title = varAltered + ' at ' + sPos + ' at\n' + \
+                valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
+            ax[0].set_title(title)
+            cbar = fig.colorbar(cax, ax = ax[0], shrink = 0.75, pad = 0.02)
+            cbar.set_label(varAltered, rotation=90)
 
         if (doOutput):
             var_name_stripped = var.replace(" ", "")
