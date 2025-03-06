@@ -42,6 +42,13 @@ def get_args():
                         help = 'latitude :  lat in deg (closest)')
     parser.add_argument('-lon', metavar = 'lon', default = 180, type = int, \
                         help = 'longitude :  lon in deg (closest)')
+
+    parser.add_argument('-maxalt', metavar = 'maxalt', \
+                        default = -1, type = float, \
+                        help = 'maximum altitude to plot')
+    parser.add_argument('-minalt', metavar = 'minalt', \
+                        default = -1, type = float, \
+                        help = 'minimum altitude to plot')
     
     parser.add_argument('-polar',  \
                         action='store_true', default = False, \
@@ -368,7 +375,9 @@ def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
 def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
                    ax, \
                    doScatter = False,
-                   doPlotLog = False):
+                   doPlotLog = False,
+                   minalt = -1,
+                   maxalt = -1):
 
     # need to cycle through all of the blocks to get the min and max:
 
@@ -377,6 +386,25 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
     maxi = -1e32
     nAlts = len(lonData['lon'][0, 0, 0, :])
     nLats = len(lonData['lon'][0, 0, :, 0])
+
+    minAltsData = np.min(altData['z']/1000.0)
+    maxAltsData = np.max(altData['z']/1000.0)
+
+    if ((minalt == -1) and (maxalt == -1)):
+        r = (maxAltsData - minAltsData)
+        minAlt = minAltsData - 0.05 * r
+        if (minAlt < 0):
+            minAlt = 0.0
+        maxAlt = maxAltsData + 0.05 * r
+    else:
+        if (minalt == -1):
+            minAlt = minAltsData
+        else:
+            minAlt = minalt
+        if (maxalt == -1):
+            maxAlt = maxAltsData
+        else:
+            maxAlt = maxalt    
     
     for iBlock in range(nBlocks):
         lons = lonData['lon'][iBlock, 1:-1, int(nLats/2), int(nAlts/2)]
@@ -428,7 +456,7 @@ def plot_lon_plane(valueData, lonData, latData, altData, var, lon, \
     ax[0].set_xlabel('Altitude (km)')
     ax[0].set_xlabel('Latitude (deg)')
     ax[0].set_xlim([-90.0, 90.0])
-    #ax.set_xlim([0.0, 360.0])
+    ax[0].set_ylim([minAlt, maxAlt])
 
     return cax, sPos, sPosFile
 
@@ -531,9 +559,16 @@ if __name__ == '__main__':
                                                      isCube, doScatter, args.polar)
             if (args.cut == 'lon'):
                 cax, sPos, sPosFile = plot_lon_plane(valueData, \
-                                                     lonData, latData, altData, \
-                                                     var, args.lon, ax, doScatter, \
-                                                     args.log)
+                                                     lonData, \
+                                                     latData, \
+                                                     altData, \
+                                                     var, \
+                                                     args.lon, \
+                                                     ax, \
+                                                     doScatter, \
+                                                     args.log, \
+                                                     args.minalt, \
+                                                     args.maxalt)
 
             title = varAltered + ' at ' + sPos + ' at\n' + \
                 valueData['time'].strftime('%B %d, %Y; %H:%M:%S UT')
