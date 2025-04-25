@@ -259,6 +259,77 @@ def get_corrected_lon(lonData, lonv, iBlock, iAlt):
 #
 # ----------------------------------------------------------------------
 
+def plot_alt_cut_dipole(valueData, lonData, latData, altData, var, alt, \
+                        ax, 
+                        doPolar = False):
+
+
+    nX = valueData['nlons']
+    nY = valueData['nlats']
+    nBlocks = valueData['nblocks']
+
+    cutData = np.zeros((nBlocks, nX, nY))
+    cutAlts = np.zeros((nBlocks, nX, nY))
+    cutLons = np.zeros((nBlocks, nX, nY))
+    cutLats = np.zeros((nBlocks, nX, nY))
+    
+    print('Determining closest alts for dipole grid...')
+    for iBlock in range(nBlocks):
+        for iX in range(nX):
+            for iY in range(nY):
+                alts = altData['z'][iBlock,iX,iY,:]/1000.0
+                d = np.abs(alts - alt)
+                iZ = np.argmin(d)
+                cutData[iBlock, iX, iY] = valueData[var][iBlock, iX, iY, iZ]
+                cutAlts[iBlock, iX, iY] = altData['z'][iBlock, iX, iY, iZ]/1000.0
+                cutLons[iBlock, iX, iY] = lonData['lon'][iBlock, iX, iY, iZ]
+                cutLats[iBlock, iX, iY] = latData['lat'][iBlock, iX, iY, iZ]
+
+    mini = np.min(cutData)
+    maxi = np.max(np.abs(cutData))
+    if (mini < 0):
+        cmap = cm.bwr
+        mini = -maxi
+    else:
+        cmap = cm.Reds
+    
+    for iBlock in range(nBlocks):
+        lon2d = cutLons[iBlock, :, :]
+        lat2d = cutLats[iBlock, :, :]
+        v2d = cutData[iBlock, :, :]
+        cax = ax[0].scatter(lon2d, lat2d, c = v2d, \
+                            vmin = mini, vmax = maxi, cmap = cmap)
+
+        if (doPolar):
+            if (np.max(lat2d) > 50.0):
+                t2d = lon2d * np.pi / 180.0 - np.pi/2.0
+                r2d = 90.0 - lat2d
+                ax[1].scatter(t2d, r2d, c = v2d, \
+                              cmap = cmap, vmin = mini, vmax = maxi)
+        
+            if (np.min(lat2d) < -45.0):
+                t2d = lon2d * np.pi / 180.0 - np.pi/2.0
+                r2d = 90.0 + lat2d
+                ax[2].scatter(t2d, r2d, c = v2d, \
+                              cmap = cmap, vmin = mini, vmax = maxi)
+        
+    ax[0].set_xlabel('Longitude (deg)')
+    ax[0].set_ylabel('Latitude (deg)')
+    ax[0].set_ylim([-90.0, 90.0])
+    ax[0].set_xlim([0.0, 360.0])
+    if (doPolar):
+        set_labels_polar(ax[1], 'North')
+        set_labels_polar(ax[2], 'South', isSouth = True)
+
+    sPos = '%4.0f km ' % np.mean(cutAlts)
+    sPosFile = 'alt%03d' % int(np.mean(cutAlts))
+    
+    return cax, sPos, sPosFile
+
+# ----------------------------------------------------------------------
+#
+# ----------------------------------------------------------------------
+
 def plot_alt_plane(valueData, lonData, latData, altData, var, alt, \
                    ax, 
                    isCubeSphere, \
@@ -553,10 +624,18 @@ if __name__ == '__main__':
             else:
                 ax.append(fig.add_axes([0.075, 0.1, 0.95, 0.8]))
             if (args.cut == 'alt'):
-                cax, sPos, sPosFile = plot_alt_plane(valueData, \
-                                                     lonData, latData, altData, \
-                                                     var, args.alt, ax, \
-                                                     isCube, doScatter, args.polar)
+                if (np.min(altData['z']) > 0.0):
+                    # Need a better way to determin whether it is a dipole grid.
+                    cax, sPos, sPosFile = plot_alt_plane(valueData, \
+                                                         lonData, latData, altData, \
+                                                         var, args.alt, ax, \
+                                                         isCube, doScatter, args.polar)
+                else:
+                    # Only the dipole grid should have points below the surface!
+                    cax, sPos, sPosFile = plot_alt_cut_dipole(valueData, \
+                                                              lonData, latData, altData, \
+                                                              var, args.alt, ax, \
+                                                              args.polar)
             if (args.cut == 'lon'):
                 cax, sPos, sPosFile = plot_lon_plane(valueData, \
                                                      lonData, \
